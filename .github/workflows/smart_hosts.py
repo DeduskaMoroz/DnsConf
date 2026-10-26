@@ -423,3 +423,42 @@ def main():
     for g_dom in PRIORITY_GAME_DOMAINS:
         g_ip = best_game_ips.get(g_dom, best_primary_ip)
         output_lines.append(f"{g_ip} {g_dom}")
+
+    # 2. САЙТЫ ПЕРВОЙ НЕОБХОДИМОСТИ (Google AI/Antigravity/Sheets, Claude, Grok, OpenAI, Copilot, GeForce NOW, Canva, Imgur, Supercell Store)
+    output_lines.append(f"\n# === 2. FIRST PRIORITY SERVICES (BEST SERVER: {best_primary_ip}) ===")
+    for dom in PRIORITY_WEB_DOMAINS:
+        output_lines.append(f"{best_primary_ip} {dom.lower()}")
+
+    # Дополнительно подхватываем из всех баз любые новые поддомены Google, OpenAI, Anthropic, Grok, Supercell, Canva, Imgur, GeForceNow, GitHub
+    priority_keywords = (
+        "google", "gemini", "googleapis", "withgoogle", "anthropic", "claude",
+        "grok", "x.ai", "openai", "chatgpt", "oaistatic", "oaiusercontent",
+        "github", "supercell", "brawlstars", "clashroyale", "clashofclans",
+        "geforcenow", "nvidiagrid", "nvidia", "canva", "imgur"
+    )
+    for _, dom in all_raw_entries:
+        if any(kw in dom for kw in priority_keywords) and dom not in PRIORITY_GAME_DOMAINS:
+            output_lines.append(f"{best_primary_ip} {dom}")
+
+    # 3. ОСТАЛЬНЫЕ САЙТЫ ПО ОСТАТОЧНОМУ ПРИНЦИПУ (Если их родной IP жив — оставляем, если мертв — ставим рабочий)
+    output_lines.append("\n# === 3. RESIDUAL / OTHER SERVICES (AUTO-HEALED) ===")
+    for ip, dom in all_raw_entries:
+        if ip in alive_ips:
+            output_lines.append(f"{ip} {dom}")
+        else:
+            output_lines.append(f"{best_primary_ip} {dom}")
+
+    # 4. РЕЗЕРВ (Второй эшелон / VPN и не ответившие сегодня RU-серверы в самом конце)
+    output_lines.append(f"\n# === 4. BACKUP & FALLBACK TIER ({backup_ip}) ===")
+    for ip, dom in all_raw_entries:
+        output_lines.append(f"{backup_ip} {dom}")
+        output_lines.append(f"{ip} {dom}")
+
+    with open("smart_hosts.txt", "w", encoding="utf-8") as f:
+        f.write("\n".join(output_lines) + "\n")
+
+    print(f"\n[✓] Файл smart_hosts.txt успешно собран ({len(output_lines)} строк)!")
+
+
+if __name__ == "__main__":
+    main()
