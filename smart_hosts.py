@@ -1,3 +1,10 @@
+import socket
+import ssl
+import time
+import urllib.request
+import json
+from collections import Counter
+
 # 1. Базовый пул известных прокси-серверов GeoHide (EU — приоритет 1, US — приоритет 2)
 STATIC_PROXIES = [
     {"ip": "5.175.161.3", "group": 1, "name": "GeoHide-EU-1"},
