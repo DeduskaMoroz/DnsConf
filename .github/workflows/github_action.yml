@@ -18,9 +18,9 @@ jobs:
     env:
       DNS: ${{ vars.DNS }}
       BLOCK: ${{ vars.BLOCK }}
-      REDIRECT: ${{ vars.REDIRECT }}
+      REDIRECT: "http://localhost:8000/smart_hosts.txt"
       EXCLUDE_REDIRECT: ${{ vars.EXCLUDE_REDIRECT }}
-      DONOR_DNS: ${{ vars.DONOR_DNS }}
+      DONOR_DNS: ""
 
       CLIENT_ID: ${{ secrets.CLIENT_ID }}
       AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
@@ -40,6 +40,12 @@ jobs:
 
       - name: Build with Maven
         run: mvn -B clean package
+
+      - name: Generate Smart Hosts (Stress Test & Priority Sort)
+        run: |
+          python3 smart_hosts.py
+          nohup python3 -m http.server 8000 >/dev/null 2>&1 &
+          sleep 2
 
       - name: Run application
         run: |
