@@ -1,0 +1,74 @@
+# =====================================================================
+# ФАЙЛ СЕРВЕРОВ И ДОНОРОВ (Редактируй только его, код трогать не нужно!)
+# Формат: IP_адрес [Необязательное_имя]
+# =====================================================================
+
+[EU]
+# Сервера Европы (Группа 1 - Главные кандидаты для Gemini и ИИ)
+45.155.204.190 GeoHide-NL-New
+5.175.161.40 GeoHide-EU-3
+37.221.93.128 GeoHide-EU-1
+37.221.93.141 GeoHide-EU-2
+143.20.64.192 GeoHide-EU-7
+45.13.237.213 GeoHide-EU-5
+5.175.161.3 GeoHide-EU-4
+31.25.239.132 GeoHide-EU-6
+179.254.166.174 Malw-Gemini-Node
+
+[US]
+# Сервера США (Группа 1 - Полный доступ к функциям Gemini / Spark)
+192.255.159.240 GeoHide-US-2
+192.255.159.241 GeoHide-US-3
+107.175.76.134 GeoHide-US-1
+192.3.233.253 GeoHide-US-4
+
+[RU]
+# Сервера РФ и мобильные узлы (Группа 2-3 - Резерв)
+37.230.192.51 GeoHide-RU-Mobile-5
+159.194.200.33 GeoHide-RU-Mobile-1
+193.233.112.67 GeoHide-RU-2
+193.233.112.68 GeoHide-RU-3
+193.233.112.88 GeoHide-RU-4
+
+[AI_ONLY]
+# Сервера только для других нейросетей (ChatGPT, Claude, Grok, но НЕ Gemini)
+143.20.64.55 Malw-EU-Main
+
+[GAMES]
+# Выделенные игровые прокси Supercell (Формат: домен_игры IP_адрес [Имя])
+game.brawlstarsgame.com 179.254.166.174 Malw-BS
+game.brawlstarsgame.com 62.233.36.84 GeoHide-EU-BS1
+game.brawlstarsgame.com 62.233.36.83 GeoHide-EU-BS2
+game.clashroyaleapp.com 179.254.166.171 Malw-CR
+game.clashroyaleapp.com 81.17.20.82 GeoHide-EU-CR
+gamea.clashofclans.com 81.17.20.86 GeoHide-EU-CoC
+gamea.clashofclans.com 164.5.224.81 Malw-CoC
+game.mocogame.com 179.254.166.171 Malw-Moco
+
+[DNS_DONORS]
+# Доноры DNS (Скрипт сам вытаскивает из них свежие IP каждую ночь и вечер)
+# Можно писать просто домен или ссылку, а через пробел (если есть) — UDP IP
+router.comss.one 93.115.24.120
+dns.comss.one 93.115.24.121
+dns.malw.link 179.254.166.171
+5u35p8m9i7.cloudflare-gateway.com 164.5.224.81
+eu.geohide.ru
+us.geohide.ru
+d.webshiftvpn.ru
+dns.astracat.network
+dns.bezmezhau.com
+dns.dns-ai.ru
+dns.mafioznik.xyz
+dns.wlrus.cfd
+free.shecan.ir
+
+[GAME_DNS_DONORS]
+# Доноры DNS строго для игр Supercell
+dns.nullsproxy.com dns.nullsproxy.com
+
+[HOSTS_URLS]
+# Ссылки на автообновляемые списки hosts
+GeoHide-EU https://raw.githubusercontent.com/Internet-Helper/GeoHideDNS/refs/heads/main/hosts/eu/hosts
+Malw-Hosts https://raw.githubusercontent.com/ImMALWARE/dns.malw.link/refs/heads/master/hosts
+GeoHide-US https://raw.githubusercontent.com/Internet-Helper/GeoHideDNS/refs/heads/main/hosts/us/hosts
+GeoHide-Main https://raw.githubusercontent.com/Internet-Helper/GeoHideDNS/refs/heads/main/hosts/hosts
