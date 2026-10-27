@@ -1,5 +1,5 @@
 import base64
-import json
+import os
 import random
 import socket
 import ssl
@@ -8,109 +8,7 @@ import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# 1. Проверенные серверы специально для GEMINI и GOOGLE AI (GeoHide EU/US + профильный узел Malw для Gemini)
-GEMINI_PROXIES = [
-    {"ip": "5.175.161.40", "group": 1, "name": "GeoHide-EU-3"},
-    {"ip": "37.221.93.128", "group": 1, "name": "GeoHide-EU-1"},
-    {"ip": "37.221.93.141", "group": 1, "name": "GeoHide-EU-2"},
-    {"ip": "143.20.64.192", "group": 1, "name": "GeoHide-EU-7"},
-    {"ip": "45.13.237.213", "group": 1, "name": "GeoHide-EU-5"},
-    {"ip": "5.175.161.3", "group": 1, "name": "GeoHide-EU-4"},
-    {"ip": "31.25.239.132", "group": 1, "name": "GeoHide-EU-6"},
-    {"ip": "179.254.166.174", "group": 1, "name": "Malw-Gemini-Node"},
-    # Быстрые US-узлы GeoHide (используются для мобильных шлюзов robinfrontend-pa / aisandbox-pa)
-    {"ip": "192.255.159.240", "group": 1, "name": "GeoHide-US-2"},
-    {"ip": "107.175.76.134", "group": 1, "name": "GeoHide-US-1"},
-    {"ip": "192.3.233.253", "group": 2, "name": "GeoHide-US-4"},
-    {"ip": "192.255.159.241", "group": 2, "name": "GeoHide-US-3"},
-    # Резерв RU (Tier 3 — проверяются каждую ночь на случай снятия блокировки РКН)
-    {"ip": "159.194.200.33", "group": 3, "name": "GeoHide-RU-1"},
-    {"ip": "193.233.112.67", "group": 3, "name": "GeoHide-RU-2"},
-    {"ip": "193.233.112.68", "group": 3, "name": "GeoHide-RU-3"},
-    {"ip": "193.233.112.88", "group": 3, "name": "GeoHide-RU-4"},
-    {"ip": "37.230.192.51", "group": 3, "name": "GeoHide-RU-5"},
-]
-
-# 2. Проверенные игровые прокси-серверы для Supercell (из лога со счетом 6/6, БЕЗ Amazon AWS!)
-STATIC_GAME_PROXIES = {
-    "game.brawlstarsgame.com": [
-        {"ip": "179.254.166.174", "name": "Malw-BS(179.254.166.174)"},
-        {"ip": "62.233.36.84", "name": "GeoHide-EU-BS(62.233.36.84)"},
-        {"ip": "62.233.36.83", "name": "GeoHide-EU-BS(62.233.36.83)"},
-    ],
-    "game.clashroyaleapp.com": [
-        {"ip": "179.254.166.171", "name": "Malw-CR(179.254.166.171)"},
-        {"ip": "81.17.20.82", "name": "GeoHide-EU-CR(81.17.20.82)"},
-    ],
-    "gamea.clashofclans.com": [
-        {"ip": "81.17.20.86", "name": "GeoHide-EU-CoC(81.17.20.86)"},
-        {"ip": "164.5.224.81", "name": "Malw-CoC(164.5.224.81)"},
-    ],
-    "game.mocogame.com": [
-        {"ip": "179.254.166.171", "name": "Malw-Moco(179.254.166.171)"},
-    ],
-}
-
-# 3. DNS-серверы для живого опроса по бинарному DoH (RFC 8484) и DoT (Порт 853, как в Android!)
-SMART_DNS_PROVIDERS = [
-    {
-        "name": "Comss-Router",
-        "dot_host": "router.comss.one",
-        "doh_url": "https://router.comss.one/dns-query",
-        "udp_host": "93.115.24.120",
-        "only_games": False,
-    },
-    {
-        "name": "Comss-Main",
-        "dot_host": "dns.comss.one",
-        "doh_url": "https://dns.comss.one/dns-query",
-        "udp_host": "93.115.24.121",
-        "only_games": False,
-    },
-    {
-        "name": "Malw-DNS",
-        "dot_host": "dns.malw.link",
-        "doh_url": "https://dns.malw.link/dns-query",
-        "udp_host": "179.254.166.171",
-        "only_games": False,
-    },
-    {
-        "name": "Malw-CF-Gateway",
-        "dot_host": "5u35p8m9i7.cloudflare-gateway.com",
-        "doh_url": "https://5u35p8m9i7.cloudflare-gateway.com/dns-query",
-        "udp_host": "164.5.224.81",
-        "only_games": False,
-    },
-    {
-        "name": "GeoHide-EU",
-        "dot_host": "eu.geohide.ru",
-        "doh_url": "https://eu.geohide.ru/dns-query",
-        "udp_host": None,
-        "only_games": False,
-    },
-    {
-        "name": "GeoHide-US",
-        "dot_host": "us.geohide.ru",
-        "doh_url": "https://us.geohide.ru/dns-query",
-        "udp_host": None,
-        "only_games": False,
-    },
-    {
-        "name": "NullsProxy-Game",
-        "dot_host": "dns.nullsproxy.com",
-        "doh_url": "https://dns.nullsproxy.com/dns-query",
-        "udp_host": "dns.nullsproxy.com",
-        "only_games": True,
-    },
-]
-
-# 4. Рабочие списки hosts на GitHub (без битых ссылок 404/403)
-BASE_HOSTS_URLS = [
-    ("GeoHide-EU", "https://raw.githubusercontent.com/Internet-Helper/GeoHideDNS/refs/heads/main/hosts/eu/hosts"),
-    ("Malw-Hosts", "https://raw.githubusercontent.com/ImMALWARE/dns.malw.link/refs/heads/master/hosts"),
-    ("GeoHide-US", "https://raw.githubusercontent.com/Internet-Helper/GeoHideDNS/refs/heads/main/hosts/us/hosts"),
-    ("GeoHide-Main", "https://raw.githubusercontent.com/Internet-Helper/GeoHideDNS/refs/heads/main/hosts/hosts"),
-]
+SERVERS_FILE = "servers.txt"
 
 # === TIER 0A: ВЕБ-ШЛЮЗЫ И ИСТОРИЯ ЧАТОВ GEMINI ===
 TIER0_GEMINI_WEB_DOMAINS = [
@@ -142,8 +40,8 @@ TIER0_GEMINI_WEB_DOMAINS = [
     "ai.google.dev",
     "colab.research.google.com",
 ]
-# === TIER 0B: СПЕЦИАЛЬНЫЕ МОБИЛЬНЫЕ ШЛЮЗЫ ПРИЛОЖЕНИЯ GEMINI НА ANDROID ===
-# Для них скрипт опрашивает router.comss.one и us/eu.geohide.ru индивидуально!
+
+# === TIER 0B: МОБИЛЬНЫЕ ШЛЮЗЫ ПРИЛОЖЕНИЯ GEMINI НА ANDROID ===
 TIER0_ANDROID_APP_DOMAINS = [
     "robinfrontend-pa.googleapis.com",
     "proactivebackend-pa.googleapis.com",
@@ -229,7 +127,6 @@ TIER1_SERVICE_GROUPS = {
     },
 }
 
-# Системные домены Google, которые работают в РФ напрямую и не должны перехватываться
 NEVER_PROXY_DOMAINS = {
     "google.com", "www.google.com", "accounts.google.com", "oauth2.googleapis.com",
     "www.googleapis.com", "apis.google.com", "content.googleapis.com",
@@ -238,19 +135,17 @@ NEVER_PROXY_DOMAINS = {
     "play.google.com", "mtalk.google.com", "connectivitycheck.gstatic.com",
     "gstatic.com", "www.gstatic.com",
 }
-
-# Черный список НЕ-прокси подсетей (Прямые сервера Amazon AWS Supercell, Google, Cloudflare и заблокированные RU-узлы)
+# Черный список НЕ-прокси подсетей (Прямые сервера Amazon AWS Supercell, Google, Cloudflare, AdGuard)
 FORBIDDEN_PREFIXES = (
-    "0.", "127.", "10.", "1.1.1.", "1.0.0.", "8.8.8.", "8.8.4.",
-    # Amazon AWS (из-за которых Clash Royale зависал на 96% на 35.91.220.220 и 44.200.12.7!)
+    "0.", "127.", "10.", "1.1.1.", "1.0.0.", "8.8.8.", "8.8.4.", "94.140.",
     "34.", "35.", "44.", "52.", "54.", "18.", "3.", "13.", "15.", "98.", "99.", "75.", "16.",
-    # Прямые подсети Google и Cloudflare
     "142.250.", "142.251.", "172.217.", "216.58.", "74.125.", "64.233.",
     "108.177.", "173.194.", "209.85.", "104.16.", "104.17.", "104.18.",
     "104.19.", "172.64.", "172.66.", "172.67.",
-    # Заблокированные в РФ подсети GeoHide-RU и Xbox
-    "159.194.", "193.233.", "37.230.", "111.88.",
+    "111.88.",
 )
+
+RU_FALLBACK_PREFIXES = ("159.194.", "193.233.", "37.230.")
 TIMEOUT = 2.4
 BAD_HTTP_CODES = ("400", "403", "421", "429", "500", "502", "503", "504", "520", "521", "522", "523", "524")
 
@@ -259,6 +154,96 @@ def is_valid_proxy_ip(ip):
     if not ip or "." not in ip:
         return False
     return not ip.startswith(FORBIDDEN_PREFIXES)
+
+
+def normalize_dns_donor(raw_host_or_url, udp_host=None, only_games=False):
+    """Автоматически превращает любую строку (домен или ссылку) в полный профиль DoT + DoH + UDP."""
+    clean = raw_host_or_url.strip()
+    if clean.startswith("https://"):
+        doh_url = clean if "/" in clean[8:] else f"{clean}/dns-query"
+        dot_host = clean.split("https://")[1].split("/")[0]
+    else:
+        dot_host = clean.split("/")[0]
+        doh_url = f"https://{dot_host}/dns-query"
+    return {
+        "name": dot_host,
+        "dot_host": dot_host,
+        "doh_url": doh_url,
+        "udp_host": udp_host if udp_host and udp_host != "-" else None,
+        "only_games": only_games,
+    }
+
+
+def load_servers_config(filepath=SERVERS_FILE):
+    """Читает файл servers.txt и раскладывает серверы по категориям."""
+    gemini_proxies = []
+    ai_only_proxies = {}
+    static_game_proxies = {dom: [] for dom in PRIORITY_GAME_DOMAINS}
+    smart_dns_providers = []
+    base_hosts_urls = []
+
+    if not os.path.exists(filepath):
+        print(f" [!] Файл {filepath} не найден!")
+        return gemini_proxies, ai_only_proxies, static_game_proxies, smart_dns_providers, base_hosts_urls
+
+    section = "EU"
+    with open(filepath, "r", encoding="utf-8") as f:
+        for raw_line in f:
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            # Поддержка заголовков вида [EU] или комментариев вида # сервера eu
+            low = line.lower()
+            if line.startswith("[") and line.endswith("]"):
+                section = line[1:-1].strip().upper()
+                continue
+            if line.startswith("#"):
+                if "сервера eu" in low or "серверы eu" in low:
+                    section = "EU"
+                elif "сервера us" in low or "серверы us" in low:
+                    section = "US"
+                elif "сервера ru" in low or "серверы ru" in low:
+                    section = "RU"
+                continue
+
+            # Отрезаем комментарии в конце строки, если они есть
+            clean_line = line.split("#")[0].strip()
+            if not clean_line:
+                continue
+            parts = clean_line.split()
+
+            if section in ("EU", "US", "RU"):
+                ip = parts[0]
+                label = parts[1] if len(parts) > 1 else f"{section}({ip})"
+                grp = 1 if section in ("EU", "US") else 3
+                gemini_proxies.append({"ip": ip, "group": grp, "name": label})
+
+            elif section == "AI_ONLY":
+                ip = parts[0]
+                label = parts[1] if len(parts) > 1 else f"AI({ip})"
+                ai_only_proxies[ip] = f"{label}({ip})"
+
+            elif section == "GAMES":
+                if len(parts) >= 2:
+                    g_dom, ip = parts[0].lower(), parts[1]
+                    label = parts[2] if len(parts) > 2 else f"Game({ip})"
+                    static_game_proxies.setdefault(g_dom, []).append({"ip": ip, "name": f"{label}({ip})"})
+
+            elif section in ("DNS_DONORS", "GAME_DNS_DONORS"):
+                host_or_url = parts[0]
+                udp_h = parts[1] if len(parts) > 1 else None
+                smart_dns_providers.append(
+                    normalize_dns_donor(host_or_url, udp_h, only_games=(section == "GAME_DNS_DONORS"))
+                )
+
+            elif section == "HOSTS_URLS":
+                if len(parts) >= 2:
+                    base_hosts_urls.append((parts[0], parts[1]))
+                elif parts[0].startswith("http"):
+                    base_hosts_urls.append((f"Hosts-{len(base_hosts_urls)+1}", parts[0]))
+
+    return gemini_proxies, ai_only_proxies, static_game_proxies, smart_dns_providers, base_hosts_urls
 
 
 def build_dns_query_packet(domain):
@@ -298,7 +283,6 @@ def parse_dns_response_packet(data):
 
 
 def resolve_dot_853(dot_host, domain, timeout=3.0):
-    """Опрашивает сервер по протоколу DNS-over-TLS (порт 853) — точно так же, как Android Частный DNS!"""
     if not dot_host:
         return []
     try:
@@ -324,7 +308,6 @@ def resolve_dot_853(dot_host, domain, timeout=3.0):
 
 
 def resolve_doh_rfc8484(doh_url, domain, timeout=3.5):
-    """Опрашивает DoH-сервер по бинарному стандарту RFC 8484 (application/dns-message), который понимают Comss, Malw и GeoHide."""
     if not doh_url:
         return []
     try:
@@ -355,7 +338,6 @@ def resolve_udp_53(udp_host, domain, timeout=2.0):
 
 
 def resolve_smart_provider(provider, domain):
-    """Пробует получить прокси-IP у провайдера сначала через DoT (853), затем через бинарный DoH (443), затем через UDP (53)."""
     ips = resolve_dot_853(provider.get("dot_host"), domain)
     if not ips:
         ips = resolve_doh_rfc8484(provider.get("doh_url"), domain)
@@ -365,7 +347,6 @@ def resolve_smart_provider(provider, domain):
 
 
 def stress_test_https_get(ip, domain, require_google_headers=False, attempts=5):
-    """Отправляет реальные GET-запросы и проверяет подлинность ответа целевого сервера."""
     success = 0
     total_ms = 0.0
     ctx = ssl.create_default_context()
@@ -386,7 +367,6 @@ def stress_test_https_get(ip, domain, require_google_headers=False, attempts=5):
                     if "HTTP/" in first_line and not any(code in first_line for code in BAD_HTTP_CODES):
                         if require_google_headers:
                             r_low = resp.lower()
-                            # Настоящий прокси Google всегда возвращает куки/заголовки Google (esf, gws, sffe, google.com), а не чужой 301!
                             if not any(sig in r_low for sig in ("google", "esf", "gws", "sffe", "scaffolding", "__secure-")):
                                 continue
                         success += 1
@@ -398,16 +378,10 @@ def stress_test_https_get(ip, domain, require_google_headers=False, attempts=5):
 
 
 def stress_test_gemini_dual(ip):
-    """
-    Честный тест для Gemini (10 запросов без ложной отбраковки на 7/10!):
-    6 реальных GET-запросов к gemini.google.com (с проверкой подписи Google) +
-    4 запроса к шлюзу истории чатов appsgenaiserver-pa.googleapis.com.
-    """
     ok_web, ping_web = stress_test_https_get(ip, "gemini.google.com", require_google_headers=True, attempts=6)
     if ok_web == 0:
         return 0, 9999.0
 
-    # Для API-шлюза appsgenaiserver-pa проверяем, что TLS-рукопожатие проходит и сервер Google ESF отвечает (даже 404 на корень / означает живой API-шлюз!)
     ok_api = 0
     ping_api_total = 0.0
     ctx = ssl.create_default_context()
@@ -467,12 +441,16 @@ def fetch_hosts_file(url):
 
 
 def main():
-    print("=== 1. Скачивание актуальных списков hosts (GeoHide EU/US/Main, Malw) ===")
+    print(f"=== 0. Загрузка конфигурации серверов из {SERVERS_FILE} ===")
+    gemini_proxies, ai_only_proxies, static_game_proxies, smart_dns_providers, base_hosts_urls = load_servers_config()
+    print(f" [+] Загружено узлов Gemini: {len(gemini_proxies)}, DNS-доноров: {len(smart_dns_providers)}, списков hosts: {len(base_hosts_urls)}")
+
+    print("\n=== 1. Скачивание актуальных списков hosts ===")
     all_raw_entries = []
     domain_to_hosts_ips = {}
-    game_candidates = {dom: list(STATIC_GAME_PROXIES.get(dom, [])) for dom in PRIORITY_GAME_DOMAINS}
+    game_candidates = {dom: list(static_game_proxies.get(dom, [])) for dom in PRIORITY_GAME_DOMAINS}
 
-    for name, url in BASE_HOSTS_URLS:
+    for name, url in base_hosts_urls:
         entries = fetch_hosts_file(url)
         if entries:
             print(f" [+] {name}: загружено {len(entries)} записей")
@@ -483,35 +461,33 @@ def main():
                     if dom in game_candidates:
                         game_candidates[dom].append({"ip": ip, "name": f"{name}({ip})"})
 
-    print("\n=== 2. Живой опрос DNS по DoT (853) и бинарному DoH (router.comss.one, Malw, GeoHide, Null's Proxy) ===")
+    print("\n=== 2. Живой опрос DNS-доноров по DoT (853), бинарному DoH и UDP ===")
     gemini_candidates = []
     seen_gemini_ips = set()
     android_gateway_ips = {dom: [] for dom in TIER0_ANDROID_APP_DOMAINS}
 
-    for prov in SMART_DNS_PROVIDERS:
+    for prov in smart_dns_providers:
         if not prov["only_games"]:
-            # Опрашиваем провайдеры специально по главным шлюзам Gemini
             for g_dom in ("gemini.google.com", "appsgenaiserver-pa.googleapis.com"):
                 for ip in resolve_smart_provider(prov, g_dom):
-                    if ip not in seen_gemini_ips:
+                    if ip not in seen_gemini_ips and not ip.startswith(RU_FALLBACK_PREFIXES):
                         print(f" [+] [GEMINI-DNS] {prov['name']} ({g_dom}) -> {ip}")
                         gemini_candidates.append({"ip": ip, "group": 1, "name": f"{prov['name']}({ip})", "bonus": True})
                         seen_gemini_ips.add(ip)
 
-            # Опрашиваем индивидуально мобильные шлюзы Android-приложения Gemini
             for app_dom in TIER0_ANDROID_APP_DOMAINS:
                 for ip in resolve_smart_provider(prov, app_dom):
-                    print(f" [+] [ANDROID-APP] {prov['name']} ({app_dom}) -> {ip}")
-                    android_gateway_ips[app_dom].append((ip, prov["name"]))
+                    if not ip.startswith(RU_FALLBACK_PREFIXES):
+                        print(f" [+] [ANDROID-APP] {prov['name']} ({app_dom}) -> {ip}")
+                        android_gateway_ips[app_dom].append((ip, prov["name"]))
 
-        # Опрашиваем игровые серверы Supercell
         for game_dom in PRIORITY_GAME_DOMAINS:
             for ip in resolve_smart_provider(prov, game_dom):
-                print(f" [+] [GAME-DNS] {prov['name']} ({game_dom}) -> {ip}")
-                game_candidates[game_dom].append({"ip": ip, "name": f"{prov['name']}({ip})"})
+                if not ip.startswith(RU_FALLBACK_PREFIXES):
+                    print(f" [+] [GAME-DNS] {prov['name']} ({game_dom}) -> {ip}")
+                    game_candidates[game_dom].append({"ip": ip, "name": f"{prov['name']}({ip})"})
 
-    # Добавляем проверенные серверы Gemini из статического пула (НЕ включая сюда 143.20.64.55!)
-    for sp in GEMINI_PROXIES:
+    for sp in gemini_proxies:
         if sp["ip"] not in seen_gemini_ips:
             gemini_candidates.append({
                 "ip": sp["ip"],
@@ -520,8 +496,7 @@ def main():
                 "bonus": sp["group"] == 1,
             })
             seen_gemini_ips.add(sp["ip"])
-
-    print(f"\n=== 3. Стресс-тест {len(gemini_candidates)} профильных серверов для GEMINI (с проверкой подписи Google) ===")
+    print(f"\n=== 3. Стресс-тест {len(gemini_candidates)} серверов для GEMINI ===")
     tier0_pool, tier3_pool = [], []
     with ThreadPoolExecutor(max_workers=12) as executor:
         f_map = {executor.submit(stress_test_gemini_dual, c["ip"]): c for c in gemini_candidates}
@@ -539,29 +514,28 @@ def main():
     best_gemini_ip = tier0_pool[0]["ip"] if tier0_pool else "5.175.161.40"
     print(f"\n[★★★] ЧЕМПИОН TIER 0 ДЛЯ GEMINI: {best_gemini_ip}")
 
-    # Подбираем лучшие рабочие IP для каждого мобильного шлюза приложения Gemini на Android
     best_android_app_ips = {}
     for app_dom in TIER0_ANDROID_APP_DOMAINS:
         cand_list = android_gateway_ips.get(app_dom, []) + domain_to_hosts_ips.get(app_dom, [])
-        if cand_list:
-            best_android_app_ips[app_dom] = cand_list[0][0]
-        else:
-            best_android_app_ips[app_dom] = best_gemini_ip
+        clean_cands = [ip for ip, _ in cand_list if not ip.startswith(RU_FALLBACK_PREFIXES)]
+        best_android_app_ips[app_dom] = clean_cands[0] if clean_cands else best_gemini_ip
 
     print("\n=== 4. Персональный отбор серверов для Claude, Grok, OpenAI, Copilot, Supercell Store ===")
     general_ai_candidates = {c["ip"]: c["name"] for c in tier0_pool}
-    general_ai_candidates["143.20.64.55"] = "Malw-EU-Main(143.20.64.55)"
-    general_ai_candidates["179.254.166.174"] = "Malw-Node(179.254.166.174)"
+    general_ai_candidates.update(ai_only_proxies)
     service_winners = {}
 
     for svc_name, svc_info in TIER1_SERVICE_GROUPS.items():
         t_dom = svc_info["test_domain"]
         svc_pool = dict(general_ai_candidates)
         for ip, src_name in domain_to_hosts_ips.get(t_dom, []):
-            svc_pool.setdefault(ip, f"{src_name}({ip})")
-        for prov in SMART_DNS_PROVIDERS[:5]:
-            for ip in resolve_smart_provider(prov, t_dom):
-                svc_pool.setdefault(ip, f"{prov['name']}({ip})")
+            if not ip.startswith(RU_FALLBACK_PREFIXES):
+                svc_pool.setdefault(ip, f"{src_name}({ip})")
+        for prov in smart_dns_providers[:6]:
+            if not prov["only_games"]:
+                for ip in resolve_smart_provider(prov, t_dom):
+                    if not ip.startswith(RU_FALLBACK_PREFIXES):
+                        svc_pool.setdefault(ip, f"{prov['name']}({ip})")
 
         scored_svc = []
         with ThreadPoolExecutor(max_workers=10) as executor:
@@ -579,12 +553,12 @@ def main():
         else:
             service_winners[svc_name] = best_gemini_ip
 
-    print("\n=== 5. Стресс-тест игровых прокси Brawl Stars и Clash Royale (Без прямых серверов AWS!) ===")
+    print("\n=== 5. Стресс-тест игровых прокси Brawl Stars и Clash Royale ===")
     best_game_ips = {}
     for g_dom, g_list in game_candidates.items():
         unique_ips = {}
         for item in g_list:
-            if is_valid_proxy_ip(item["ip"]):
+            if is_valid_proxy_ip(item["ip"]) and not item["ip"].startswith(RU_FALLBACK_PREFIXES):
                 unique_ips.setdefault(item["ip"], item["name"])
         scored = []
         for ip, label in unique_ips.items():
@@ -597,32 +571,27 @@ def main():
             best_game_ips[g_dom] = scored[0][2]
             print(f" [★] Победитель для {g_dom}: {scored[0][2]} ({scored[0][1]} мс)")
 
-    # === ФОРМИРОВАНИЕ ИТОГОВОГО ФАЙЛА SMART_HOSTS.TXT ===
     output_lines = []
     assigned_domains = set()
 
-    # 1. TIER 0A: GEMINI И ШЛЮЗЫ ИСТОРИИ ЧАТОВ (appsgenaiserver-pa.*)
     output_lines.append(f"# === TIER 0A: GEMINI WEB & CHAT GATEWAYS (CHAMPION: {best_gemini_ip}) ===")
     for dom in TIER0_GEMINI_WEB_DOMAINS:
         d = dom.lower()
         output_lines.append(f"{best_gemini_ip} {d}")
         assigned_domains.add(d)
 
-    # 2. TIER 0B: МОБИЛЬНЫЕ ШЛЮЗЫ ПРИЛОЖЕНИЯ GEMINI НА ANDROID
     output_lines.append("\n# === TIER 0B: GEMINI ANDROID APP GATEWAYS ===")
     for app_dom, app_ip in best_android_app_ips.items():
         d = app_dom.lower()
         output_lines.append(f"{app_ip} {d}")
         assigned_domains.add(d)
 
-    # 3. TIER 1A: БОЕВЫЕ СЕРВЕРЫ ИГР SUPERCELL
     output_lines.append("\n# === TIER 1A: SUPERCELL GAME SERVERS ===")
     for g_dom in PRIORITY_GAME_DOMAINS:
         g_ip = best_game_ips.get(g_dom, "179.254.166.171")
         output_lines.append(f"{g_ip} {g_dom}")
         assigned_domains.add(g_dom)
 
-    # 4. TIER 1B: ПЕРСОНАЛЬНЫЕ СЕРВЕРЫ ДЛЯ CLAUDE, GROK, OPENAI, COPILOT, GEFORCE NOW, CANVA, IMGUR
     output_lines.append("\n# === TIER 1B: PRIORITY AI & SERVICES ===")
     for svc_name, svc_info in TIER1_SERVICE_GROUPS.items():
         svc_ip = service_winners.get(svc_name, best_gemini_ip)
@@ -633,18 +602,16 @@ def main():
                 output_lines.append(f"{svc_ip} {d}")
                 assigned_domains.add(d)
 
-    # 5. TIER 2: ОСТАЛЬНЫЕ РАЗБЛОКИРОВАННЫЕ САЙТЫ (сохраняют свои профильные рабочие IP из баз GeoHide/Malw)
     output_lines.append("\n# === TIER 2: OTHER UNLOCKED SERVICES ===")
     for ip, dom in all_raw_entries:
         if dom not in assigned_domains and dom not in NEVER_PROXY_DOMAINS:
-            if is_valid_proxy_ip(ip):
+            if is_valid_proxy_ip(ip) and not ip.startswith(RU_FALLBACK_PREFIXES):
                 output_lines.append(f"{ip} {dom}")
                 assigned_domains.add(dom)
             else:
                 output_lines.append(f"{best_gemini_ip} {dom}")
                 assigned_domains.add(dom)
 
-    # 6. TIER 3: РЕЗЕРВНЫЕ И ОЖИДАЮЩИЕ РАЗБЛОКИРОВКИ СЕРВЕРЫ
     output_lines.append("\n# === TIER 3: FALLBACK & RESERVE SERVERS ===")
     for c in tier3_pool:
         output_lines.append(f"# Fallback candidate: {c['name']} ({c['ip']}) - score {c['ok']}/10")
